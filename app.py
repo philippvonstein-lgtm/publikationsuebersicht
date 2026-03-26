@@ -72,7 +72,6 @@ EXTRA_STAFF_NAMES = [
     "Arian Sultan",
     "Simon Braumann",
     "Christoph Adler",
-    "Max Meertens",
 ]
 
 # Session state für eigene Autoren
