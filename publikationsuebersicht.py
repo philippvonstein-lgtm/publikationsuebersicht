@@ -988,14 +988,50 @@ def create_word_document(
     # Zusammenfassung nach Mitarbeiter
     doc.add_heading("Zusammenfassung nach Mitarbeiter", level=2)
 
-    # Zähle Publikationen pro Mitarbeiter (inkl. Co-Autorenschaften)
+    def _get_real_position(fau_name: str, authors_list) -> str:
+        """Bestimmt die echte Position eines Autors in der Autorenliste."""
+        if not authors_list or not isinstance(authors_list, list):
+            return "Ko-Autor"
+        # Finde den Autor in der Liste
+        fau_lower = fau_name.lower().strip()
+        for idx, author in enumerate(authors_list):
+            author_lower = author.lower().strip()
+            # Prüfe ob der FAU-Name im Autornamen enthalten ist
+            if fau_lower in author_lower or author_lower in fau_lower:
+                if idx == 0:
+                    return "Erstautor"
+                elif idx == len(authors_list) - 1:
+                    return "Letztautor"
+                else:
+                    return "Ko-Autor"
+            # Prüfe Nachname-Match
+            fau_parts = fau_name.split(",", 1) if "," in fau_name else [fau_name]
+            fau_last = fau_parts[0].strip().lower()
+            if fau_last and len(fau_last) > 2:
+                author_parts = author.split(",", 1) if "," in author else author.split()
+                author_last = author_parts[0].strip().lower() if "," in author else (author_parts[-1].strip().lower() if author_parts else "")
+                if fau_last == author_last:
+                    if idx == 0:
+                        return "Erstautor"
+                    elif idx == len(authors_list) - 1:
+                        return "Letztautor"
+                    else:
+                        return "Ko-Autor"
+        return "Ko-Autor"
+
+    # Zähle Publikationen pro Mitarbeiter — echte Position in der Autorenliste
     pub_counts = {}
     for art in articles:
-        # Zähle für alle Klinik-Autoren, nicht nur den zugeordneten
+        authors_list = art.get("full_authors", art.get("authors", []))
+        if not isinstance(authors_list, list):
+            authors_list = []
+
         counted_names = set()
-        counted_names.add(art["assigned_to"].lower())
+
+        # Zugeordneter Autor: echte Position aus der Autorenliste
         name_key = art["assigned_full_name"]
-        pos = art.get("author_position", "")
+        pos = art.get("author_position", "Ko-Autor")
+        counted_names.add(art["assigned_to"].lower())
         if name_key not in pub_counts:
             pub_counts[name_key] = {"Gesamt": 0, "Erstautor": 0, "Letztautor": 0, "Ko-Autor": 0}
         pub_counts[name_key]["Gesamt"] += 1
@@ -1006,14 +1042,22 @@ def create_word_document(
         else:
             pub_counts[name_key]["Ko-Autor"] += 1
 
+        # Andere Klinik-Autoren: echte Position individuell bestimmen
         for o in art.get("other_clinic_authors", []):
             oname = normalize_name(o["name"]).lower()
             if oname not in counted_names:
                 counted_names.add(oname)
+                # Echte Position aus der Autorenliste bestimmen
+                real_pos = _get_real_position(o["name"], authors_list)
                 if o["name"] not in pub_counts:
                     pub_counts[o["name"]] = {"Gesamt": 0, "Erstautor": 0, "Letztautor": 0, "Ko-Autor": 0}
                 pub_counts[o["name"]]["Gesamt"] += 1
-                pub_counts[o["name"]]["Ko-Autor"] += 1
+                if real_pos == "Erstautor":
+                    pub_counts[o["name"]]["Erstautor"] += 1
+                elif real_pos == "Letztautor":
+                    pub_counts[o["name"]]["Letztautor"] += 1
+                else:
+                    pub_counts[o["name"]]["Ko-Autor"] += 1
 
     # Nur Mitarbeiter mit Publikationen anzeigen
     pub_counts = {k: v for k, v in pub_counts.items() if v["Gesamt"] > 0}

@@ -456,9 +456,32 @@ if st.session_state.search_done and st.session_state.articles is not None:
 
         st.subheader("📊 Publikationen pro Mitarbeiter")
 
-        # Zähle Publikationen pro Mitarbeiter
+        # Zähle Publikationen pro Mitarbeiter — echte Position in der Autorenliste
+        def _get_real_pos(fau_name, authors_list):
+            if not authors_list or not isinstance(authors_list, list):
+                return "Ko-Autor"
+            fau_lower = fau_name.lower().strip()
+            for idx, author in enumerate(authors_list):
+                al = author.lower().strip()
+                fau_parts = fau_name.split(",", 1) if "," in fau_name else [fau_name]
+                fau_last = fau_parts[0].strip().lower()
+                author_parts = author.split(",", 1) if "," in author else author.split()
+                author_last = author_parts[0].strip().lower() if "," in author else (author_parts[-1].strip().lower() if author_parts else "")
+                if (fau_lower in al or al in fau_lower or
+                    (fau_last and len(fau_last) > 2 and fau_last == author_last)):
+                    if idx == 0:
+                        return "Erstautor"
+                    elif idx == len(authors_list) - 1:
+                        return "Letztautor"
+                    return "Ko-Autor"
+            return "Ko-Autor"
+
         pub_counts = {}
         for art in articles:
+            authors_list = art.get("full_authors", art.get("authors", []))
+            if not isinstance(authors_list, list):
+                authors_list = []
+
             name = art["assigned_to"]
             if name not in pub_counts:
                 pub_counts[name] = {"Gesamt": 0, "Erstautor": 0, "Letztautor": 0, "Ko-Autor": 0}
@@ -471,13 +494,22 @@ if st.session_state.search_done and st.session_state.articles is not None:
             else:
                 pub_counts[name]["Ko-Autor"] += 1
 
-            # Zähle auch andere Klinik-Autoren
+            # Zähle auch andere Klinik-Autoren mit echter Position
+            counted = {name.lower()}
             for other in art.get("other_clinic_authors", []):
                 oname = normalize_name(other["name"])
-                if oname not in pub_counts:
-                    pub_counts[oname] = {"Gesamt": 0, "Erstautor": 0, "Letztautor": 0, "Ko-Autor": 0}
-                pub_counts[oname]["Gesamt"] += 1
-                pub_counts[oname]["Ko-Autor"] += 1
+                if oname.lower() not in counted:
+                    counted.add(oname.lower())
+                    real_pos = _get_real_pos(other["name"], authors_list)
+                    if oname not in pub_counts:
+                        pub_counts[oname] = {"Gesamt": 0, "Erstautor": 0, "Letztautor": 0, "Ko-Autor": 0}
+                    pub_counts[oname]["Gesamt"] += 1
+                    if real_pos == "Erstautor":
+                        pub_counts[oname]["Erstautor"] += 1
+                    elif real_pos == "Letztautor":
+                        pub_counts[oname]["Letztautor"] += 1
+                    else:
+                        pub_counts[oname]["Ko-Autor"] += 1
 
         if pub_counts:
             df = pd.DataFrame.from_dict(pub_counts, orient="index")
