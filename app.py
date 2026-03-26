@@ -84,6 +84,15 @@ with st.sidebar:
     use_scholar = st.checkbox("Google Scholar einbeziehen", value=False,
                                help="Deutlich langsamer wegen Rate-Limiting")
 
+    st.subheader("🎯 Autorenfilter")
+    position_filter_sidebar = st.selectbox("Autorenposition", [
+        "Alle Publikationen",
+        "Nur Erstautorschaften",
+        "Nur Letztautorschaften",
+        "Nur Erst- & Letztautorschaften",
+        "Nur Ko-Autorenschaften",
+    ], help="Filter gilt für Anzeige UND Word-Export")
+
     st.subheader("📧 PubMed E-Mail")
     email = st.text_input("E-Mail für PubMed API",
                           value="publikationen@uk-koeln.de",
@@ -246,8 +255,26 @@ if start_search:
 # ---------------------------------------------------------------------------
 # Ergebnisse anzeigen
 # ---------------------------------------------------------------------------
+def apply_position_filter(articles, pos_filter):
+    """Wendet den Sidebar-Autorenfilter global an."""
+    if pos_filter == "Alle Publikationen":
+        return articles
+    elif pos_filter == "Nur Erstautorschaften":
+        return [a for a in articles if a.get("author_position") == "Erstautor"]
+    elif pos_filter == "Nur Letztautorschaften":
+        return [a for a in articles if a.get("author_position") == "Letztautor"]
+    elif pos_filter == "Nur Erst- & Letztautorschaften":
+        return [a for a in articles if a.get("author_position") in ("Erstautor", "Letztautor")]
+    elif pos_filter == "Nur Ko-Autorenschaften":
+        return [a for a in articles
+                if a.get("author_position", "").startswith("Ko-Autor")
+                or a.get("author_position") in ("Vorletzter Autor", "Investigator")]
+    return articles
+
+
 if st.session_state.search_done and st.session_state.articles is not None:
-    articles = st.session_state.articles
+    articles_all = st.session_state.articles
+    articles = apply_position_filter(articles_all, position_filter_sidebar)
     staff = st.session_state.staff
     is_clinic = build_clinic_author_checker(staff)
 
@@ -274,18 +301,11 @@ if st.session_state.search_done and st.session_state.articles is not None:
 
     with tab1:
         # Filter
-        col_filter1, col_filter2, col_filter3 = st.columns([3, 1, 1])
+        col_filter1, col_filter2 = st.columns([3, 1])
         with col_filter1:
             search_term = st.text_input("🔍 Suche in Titeln/Autoren",
                                         placeholder="z.B. Baldus, tricuspid, mitral...")
         with col_filter2:
-            position_filter = st.selectbox("Autorenposition", [
-                "Alle",
-                "Nur Erstautorschaften",
-                "Nur Letztautorschaften",
-                "Nur Ko-Autorenschaften",
-            ])
-        with col_filter3:
             mitarbeiter_filter = st.selectbox(
                 "Mitarbeiter",
                 ["Alle"] + sorted(set(a.get("assigned_to", "") for a in articles if a.get("assigned_to"))),
@@ -298,15 +318,6 @@ if st.session_state.search_done and st.session_state.articles is not None:
             filtered = [a for a in filtered
                         if term in a.get("title", "").lower()
                         or any(term in str(au).lower() for au in a.get("full_authors", a.get("authors", [])))]
-        if position_filter == "Nur Erstautorschaften":
-            filtered = [a for a in filtered if a.get("author_position") == "Erstautor"]
-        elif position_filter == "Nur Letztautorschaften":
-            filtered = [a for a in filtered if a.get("author_position") == "Letztautor"]
-        elif position_filter == "Nur Ko-Autorenschaften":
-            filtered = [a for a in filtered
-                        if a.get("author_position", "").startswith("Ko-Autor")
-                        or a.get("author_position") == "Vorletzter Autor"
-                        or a.get("author_position") == "Investigator"]
         if mitarbeiter_filter != "Alle":
             filtered = [a for a in filtered if a.get("assigned_to") == mitarbeiter_filter]
 
@@ -401,7 +412,8 @@ if st.session_state.search_done and st.session_state.articles is not None:
 
     with tab3:
         st.subheader("📥 Als Word-Dokument exportieren")
-        st.write(f"Exportiert **{len(articles)} Publikationen** als formatiertes Word-Dokument.")
+        filter_info = f"(**{position_filter_sidebar}**)" if position_filter_sidebar != "Alle Publikationen" else ""
+        st.write(f"Exportiert **{len(articles)} Publikationen** {filter_info} als formatiertes Word-Dokument.")
 
         if st.button("📄 Word-Dokument generieren", type="primary"):
             with st.spinner("Word-Dokument wird erstellt..."):
