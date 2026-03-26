@@ -55,6 +55,31 @@ st.markdown("""
 
 
 # ---------------------------------------------------------------------------
+# Zusätzliche Mitarbeiter (nicht auf der Homepage)
+# ---------------------------------------------------------------------------
+EXTRA_STAFF_NAMES = [
+    "Per Arkenberg",
+    "Harshal Nemade",
+    "Kristel Martinez Lagunas",
+    "Yein Park",
+    "Elvina Santhamma Philip",
+    "Suchitra Narayan",
+    "Chantal Wientjens",
+    "Holger Winkels",
+    "Martin Mollenhauer",
+    "Valerie Lohner",
+    "Thomas Riffelmacher",
+    "Arian Sultan",
+    "Simon Braumann",
+    "Christoph Adler",
+    "Max Meertens",
+]
+
+# Session state für eigene Autoren
+if "custom_authors" not in st.session_state:
+    st.session_state.custom_authors = []
+
+# ---------------------------------------------------------------------------
 # Sidebar
 # ---------------------------------------------------------------------------
 with st.sidebar:
@@ -83,6 +108,40 @@ with st.sidebar:
     st.subheader("🔍 Suchoptionen")
     use_scholar = st.checkbox("Google Scholar einbeziehen", value=False,
                                help="Deutlich langsamer wegen Rate-Limiting")
+
+    # --- Autoren-Auswahl ---
+    st.subheader("👥 Autoren")
+
+    use_med3 = st.checkbox("Med III Homepage (alle)", value=True,
+                            help="Alle Mitarbeiter von der Klinik-Website")
+
+    st.caption("**Zusätzliche Mitarbeiter:**")
+    selected_extra = []
+    for name in EXTRA_STAFF_NAMES:
+        if st.checkbox(name, value=True, key=f"extra_{name}"):
+            selected_extra.append(name)
+
+    # Eigene Autoren hinzufügen
+    with st.expander("➕ Weitere Autoren hinzufügen"):
+        new_author = st.text_input("Name (Vorname Nachname)",
+                                    placeholder="z.B. Maria Müller",
+                                    key="new_author_input")
+        if st.button("Hinzufügen", key="add_author_btn"):
+            if new_author.strip() and new_author.strip() not in st.session_state.custom_authors:
+                st.session_state.custom_authors.append(new_author.strip())
+                st.rerun()
+
+        # Zeige eigene Autoren mit Lösch-Option
+        for i, ca in enumerate(st.session_state.custom_authors):
+            col_a, col_x = st.columns([3, 1])
+            with col_a:
+                st.write(ca)
+            with col_x:
+                if st.button("✕", key=f"del_custom_{i}"):
+                    st.session_state.custom_authors.pop(i)
+                    st.rerun()
+
+    st.divider()
 
     st.subheader("🎯 Autorenfilter")
     position_filter_sidebar = st.selectbox("Autorenposition", [
@@ -195,11 +254,54 @@ if start_search:
     start_date_str = start_date.strftime("%Y/%m/%d")
     end_date_str = end_date.strftime("%Y/%m/%d")
 
-    # Schritt 1: Mitarbeiter
-    with st.status("🏥 Scrape Mitarbeiterliste...", expanded=True) as status:
-        staff = scrape_staff()
-        st.write(f"✅ **{len(staff)} Mitarbeiter** gefunden")
-        status.update(label=f"✅ {len(staff)} Mitarbeiter gefunden", state="complete")
+    # Schritt 1: Mitarbeiter zusammenstellen
+    with st.status("🏥 Mitarbeiterliste wird erstellt...", expanded=True) as status:
+        staff = []
+
+        # a) Med III Homepage (falls aktiviert)
+        if use_med3:
+            from publikationsuebersicht import scrape_staff as _scrape_raw
+            # Scrape, aber OHNE die EXTRA_STAFF aus dem Skript
+            # (die steuern wir jetzt über die Sidebar)
+            import publikationsuebersicht as _mod
+            orig_extra = getattr(_mod, '_ORIG_EXTRA', None)
+            raw_staff = _scrape_raw()
+            # Entferne die im Skript hartcodierten Extras
+            # (wir fügen sie separat über die Sidebar hinzu)
+            extra_clean_names = {n.lower() for n in EXTRA_STAFF_NAMES}
+            staff = [s for s in raw_staff
+                     if s["clean_name"].lower() not in extra_clean_names]
+            st.write(f"✅ **{len(staff)}** Mitarbeiter von der Homepage")
+
+        # b) Ausgewählte Zusatz-Mitarbeiter
+        for name in selected_extra:
+            staff.append({
+                "full_name": name, "clean_name": name,
+                "title": "", "position": "", "category": "Zusätzlich",
+            })
+        if selected_extra:
+            st.write(f"✅ **{len(selected_extra)}** zusätzliche Mitarbeiter")
+
+        # c) Eigene Autoren
+        for name in st.session_state.custom_authors:
+            staff.append({
+                "full_name": name, "clean_name": name,
+                "title": "", "position": "", "category": "Eigener Autor",
+            })
+        if st.session_state.custom_authors:
+            st.write(f"✅ **{len(st.session_state.custom_authors)}** eigene Autoren")
+
+        # Duplikate entfernen
+        seen = set()
+        unique_staff = []
+        for s in staff:
+            key = s["clean_name"].lower()
+            if key not in seen:
+                seen.add(key)
+                unique_staff.append(s)
+        staff = unique_staff
+
+        status.update(label=f"✅ {len(staff)} Mitarbeiter gesamt", state="complete")
 
     st.session_state.staff = staff
 
