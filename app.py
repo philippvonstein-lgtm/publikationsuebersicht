@@ -274,14 +274,22 @@ if st.session_state.search_done and st.session_state.articles is not None:
 
     with tab1:
         # Filter
-        col_filter1, col_filter2 = st.columns([3, 1])
+        col_filter1, col_filter2, col_filter3 = st.columns([3, 1, 1])
         with col_filter1:
             search_term = st.text_input("🔍 Suche in Titeln/Autoren",
                                         placeholder="z.B. Baldus, tricuspid, mitral...")
         with col_filter2:
             position_filter = st.selectbox("Autorenposition", [
-                "Alle", "Erstautor", "Letztautor", "Vorletzter Autor", "Ko-Autor", "Investigator"
+                "Alle",
+                "Nur Erstautorschaften",
+                "Nur Letztautorschaften",
+                "Nur Ko-Autorenschaften",
             ])
+        with col_filter3:
+            mitarbeiter_filter = st.selectbox(
+                "Mitarbeiter",
+                ["Alle"] + sorted(set(a.get("assigned_to", "") for a in articles if a.get("assigned_to"))),
+            )
 
         # Artikel filtern
         filtered = articles
@@ -290,11 +298,17 @@ if st.session_state.search_done and st.session_state.articles is not None:
             filtered = [a for a in filtered
                         if term in a.get("title", "").lower()
                         or any(term in str(au).lower() for au in a.get("full_authors", a.get("authors", [])))]
-        if position_filter != "Alle":
-            if position_filter == "Ko-Autor":
-                filtered = [a for a in filtered if a.get("author_position", "").startswith("Ko-Autor")]
-            else:
-                filtered = [a for a in filtered if a.get("author_position") == position_filter]
+        if position_filter == "Nur Erstautorschaften":
+            filtered = [a for a in filtered if a.get("author_position") == "Erstautor"]
+        elif position_filter == "Nur Letztautorschaften":
+            filtered = [a for a in filtered if a.get("author_position") == "Letztautor"]
+        elif position_filter == "Nur Ko-Autorenschaften":
+            filtered = [a for a in filtered
+                        if a.get("author_position", "").startswith("Ko-Autor")
+                        or a.get("author_position") == "Vorletzter Autor"
+                        or a.get("author_position") == "Investigator"]
+        if mitarbeiter_filter != "Alle":
+            filtered = [a for a in filtered if a.get("assigned_to") == mitarbeiter_filter]
 
         st.write(f"**{len(filtered)} Publikationen** angezeigt")
 
