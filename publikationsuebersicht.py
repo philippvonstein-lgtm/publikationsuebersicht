@@ -963,11 +963,15 @@ def create_word_document(
     # Metadaten
     meta = doc.add_paragraph()
     meta.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    # Zähle Erst-/Letztautorschaften für die Metadaten
+    n_first = sum(1 for a in articles if a.get("author_position") == "Erstautor")
+    n_last = sum(1 for a in articles if a.get("author_position") == "Letztautor")
     meta_run = meta.add_run(
         f"Zeitraum: {start_date} bis {end_date}\n"
         f"Erstellt am: {datetime.now().strftime('%d.%m.%Y %H:%M')}\n"
         f"Anzahl Mitarbeiter durchsucht: {len(staff)}\n"
-        f"Anzahl Publikationen gefunden: {len(articles)}"
+        f"Anzahl Publikationen: {len(articles)}\n"
+        f"Davon Erstautorschaften: {n_first} | Letztautorschaften: {n_last}"
     )
     meta_run.font.size = Pt(10)
     meta_run.font.color.rgb = RGBColor(100, 100, 100)
@@ -991,23 +995,34 @@ def create_word_document(
         counted_names = set()
         counted_names.add(art["assigned_to"].lower())
         name_key = art["assigned_full_name"]
+        pos = art.get("author_position", "")
         if name_key not in pub_counts:
-            pub_counts[name_key] = 0
-        pub_counts[name_key] += 1
+            pub_counts[name_key] = {"Gesamt": 0, "Erstautor": 0, "Letztautor": 0, "Ko-Autor": 0}
+        pub_counts[name_key]["Gesamt"] += 1
+        if pos == "Erstautor":
+            pub_counts[name_key]["Erstautor"] += 1
+        elif pos == "Letztautor":
+            pub_counts[name_key]["Letztautor"] += 1
+        else:
+            pub_counts[name_key]["Ko-Autor"] += 1
 
         for o in art.get("other_clinic_authors", []):
             oname = normalize_name(o["name"]).lower()
             if oname not in counted_names:
                 counted_names.add(oname)
                 if o["name"] not in pub_counts:
-                    pub_counts[o["name"]] = 0
-                pub_counts[o["name"]] += 1
+                    pub_counts[o["name"]] = {"Gesamt": 0, "Erstautor": 0, "Letztautor": 0, "Ko-Autor": 0}
+                pub_counts[o["name"]]["Gesamt"] += 1
+                pub_counts[o["name"]]["Ko-Autor"] += 1
+
+    # Nur Mitarbeiter mit Publikationen anzeigen
+    pub_counts = {k: v for k, v in pub_counts.items() if v["Gesamt"] > 0}
 
     # Tabelle
-    table = doc.add_table(rows=1, cols=2)
+    table = doc.add_table(rows=1, cols=4)
     table.style = "Light Grid Accent 1"
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
-    for i, h in enumerate(["Mitarbeiter", "Publikationen"]):
+    for i, h in enumerate(["Mitarbeiter", "Erst", "Letzt", "Ko"]):
         cell = table.rows[0].cells[i]
         cell.text = h
         for p in cell.paragraphs:
@@ -1015,10 +1030,12 @@ def create_word_document(
                 r.bold = True
                 r.font.size = Pt(9)
 
-    for name, count in sorted(pub_counts.items(), key=lambda x: x[1], reverse=True):
+    for name, counts in sorted(pub_counts.items(), key=lambda x: x[1]["Gesamt"], reverse=True):
         row = table.add_row()
         row.cells[0].text = name
-        row.cells[1].text = str(count)
+        row.cells[1].text = str(counts["Erstautor"]) if counts["Erstautor"] else ""
+        row.cells[2].text = str(counts["Letztautor"]) if counts["Letztautor"] else ""
+        row.cells[3].text = str(counts["Ko-Autor"]) if counts["Ko-Autor"] else ""
         for cell in row.cells:
             for p in cell.paragraphs:
                 for r in p.runs:
@@ -1159,26 +1176,6 @@ def create_word_document(
             r = sep.add_run("─" * 90)
             r.font.size = Pt(5)
             r.font.color.rgb = RGBColor(200, 200, 200)
-
-    # Footer mit Mitarbeiter ohne Publikationen
-    doc.add_page_break()
-    doc.add_heading("Mitarbeiter ohne Publikationen im Zeitraum", level=2)
-
-    authors_with_pubs = set()
-    for art in articles:
-        authors_with_pubs.add(art["assigned_to"].lower())
-        for o in art.get("other_clinic_authors", []):
-            authors_with_pubs.add(normalize_name(o["name"]).lower())
-
-    no_pubs = [s for s in staff if s["clean_name"].lower() not in authors_with_pubs]
-
-    if no_pubs:
-        for s in sorted(no_pubs, key=lambda x: x["clean_name"]):
-            p = doc.add_paragraph(s["full_name"], style="List Bullet")
-            for r in p.runs:
-                r.font.size = Pt(9)
-    else:
-        doc.add_paragraph("Alle Mitarbeiter haben Publikationen im Zeitraum.")
 
     doc.save(output_path)
 

@@ -389,32 +389,33 @@ if st.session_state.search_done and st.session_state.articles is not None:
 
     st.divider()
 
+    # Textfilter und Mitarbeiter-Filter (vor den Tabs, damit überall verfügbar)
+    col_filter1, col_filter2 = st.columns([3, 1])
+    with col_filter1:
+        search_term = st.text_input("🔍 Suche in Titeln/Autoren",
+                                    placeholder="z.B. Baldus, tricuspid, mitral...")
+    with col_filter2:
+        mitarbeiter_filter = st.selectbox(
+            "Mitarbeiter",
+            ["Alle"] + sorted(set(a.get("assigned_to", "") for a in articles if a.get("assigned_to"))),
+        )
+
+    # Artikel filtern
+    filtered = articles
+    if search_term:
+        term = search_term.lower()
+        filtered = [a for a in filtered
+                    if term in a.get("title", "").lower()
+                    or any(term in str(au).lower() for au in a.get("full_authors", a.get("authors", [])))]
+    if mitarbeiter_filter != "Alle":
+        filtered = [a for a in filtered if a.get("assigned_to") == mitarbeiter_filter]
+
+    st.write(f"**{len(filtered)} Publikationen** angezeigt")
+
     # Tabs für verschiedene Ansichten
     tab1, tab2, tab3 = st.tabs(["📋 Publikationsliste", "📊 Statistiken", "📥 Export"])
 
     with tab1:
-        # Filter
-        col_filter1, col_filter2 = st.columns([3, 1])
-        with col_filter1:
-            search_term = st.text_input("🔍 Suche in Titeln/Autoren",
-                                        placeholder="z.B. Baldus, tricuspid, mitral...")
-        with col_filter2:
-            mitarbeiter_filter = st.selectbox(
-                "Mitarbeiter",
-                ["Alle"] + sorted(set(a.get("assigned_to", "") for a in articles if a.get("assigned_to"))),
-            )
-
-        # Artikel filtern
-        filtered = articles
-        if search_term:
-            term = search_term.lower()
-            filtered = [a for a in filtered
-                        if term in a.get("title", "").lower()
-                        or any(term in str(au).lower() for au in a.get("full_authors", a.get("authors", [])))]
-        if mitarbeiter_filter != "Alle":
-            filtered = [a for a in filtered if a.get("assigned_to") == mitarbeiter_filter]
-
-        st.write(f"**{len(filtered)} Publikationen** angezeigt")
 
         # Artikel anzeigen
         for i, art in enumerate(filtered, 1):
@@ -506,7 +507,7 @@ if st.session_state.search_done and st.session_state.articles is not None:
     with tab3:
         st.subheader("📥 Als Word-Dokument exportieren")
         filter_info = f"(**{position_filter_sidebar}**)" if position_filter_sidebar != "Alle Publikationen" else ""
-        st.write(f"Exportiert **{len(articles)} Publikationen** {filter_info} als formatiertes Word-Dokument.")
+        st.write(f"Exportiert **{len(filtered)} Publikationen** {filter_info} als formatiertes Word-Dokument.")
 
         if st.button("📄 Word-Dokument generieren", type="primary"):
             with st.spinner("Word-Dokument wird erstellt..."):
@@ -517,7 +518,7 @@ if st.session_state.search_done and st.session_state.articles is not None:
                 s_date = st.session_state.start_date.strftime("%Y-%m-%d")
                 e_date = st.session_state.end_date.strftime("%Y-%m-%d")
 
-                create_word_document(articles, staff, s_date, e_date, output_path)
+                create_word_document(filtered, staff, s_date, e_date, output_path)
 
                 # Datei zum Download bereitstellen
                 with open(output_path, "rb") as f:
