@@ -114,14 +114,16 @@ with st.sidebar:
     use_med3 = st.checkbox("Med III Homepage (alle)", value=True,
                             help="Alle Mitarbeiter von der Klinik-Website")
 
-    st.caption("**Zusätzliche Mitarbeiter:**")
-    selected_extra = []
-    for name in EXTRA_STAFF_NAMES:
-        if st.checkbox(name, value=True, key=f"extra_{name}"):
-            selected_extra.append(name)
+    all_extra = EXTRA_STAFF_NAMES + st.session_state.custom_authors
+    selected_extra = st.multiselect(
+        "Zusätzliche Mitarbeiter",
+        options=all_extra,
+        default=all_extra,
+        help="Wähle welche zusätzlichen Autoren durchsucht werden sollen",
+    )
 
     # Eigene Autoren hinzufügen
-    with st.expander("➕ Weitere Autoren hinzufügen"):
+    with st.expander("➕ Neuen Autor hinzufügen"):
         new_author = st.text_input("Name (Vorname Nachname)",
                                     placeholder="z.B. Maria Müller",
                                     key="new_author_input")
@@ -129,16 +131,6 @@ with st.sidebar:
             if new_author.strip() and new_author.strip() not in st.session_state.custom_authors:
                 st.session_state.custom_authors.append(new_author.strip())
                 st.rerun()
-
-        # Zeige eigene Autoren mit Lösch-Option
-        for i, ca in enumerate(st.session_state.custom_authors):
-            col_a, col_x = st.columns([3, 1])
-            with col_a:
-                st.write(ca)
-            with col_x:
-                if st.button("✕", key=f"del_custom_{i}"):
-                    st.session_state.custom_authors.pop(i)
-                    st.rerun()
 
     st.divider()
 
